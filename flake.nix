@@ -1,4 +1,3 @@
-#just a test comment
 {
   description = "Flutter + Android SDK Dev Shell with writable SDK, automatic licenses, NDK, cmdline-tools, emulator, and system image";
 
