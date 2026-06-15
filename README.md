@@ -26,6 +26,7 @@ Force Environment Rebuld: remove ".flutter_env_ready" and the .android folder. A
 
 # Planned Future Improvements
 * Plans to reintroduce full version pinning for gradle , kotlin, ndk, sdk agp etc.
+* I'll be working on updating this flake this weekend - (6-20).
      
 
 # License 
