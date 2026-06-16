@@ -2,15 +2,14 @@
   description = "Flutter + Android SDK Dev Shell with writable SDK, automatic licenses, NDK, cmdline-tools, emulator, and system image";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
-    android-nixpkgs-src = {
+    android-nixpkgs = {
       url = "github:tadfisher/android-nixpkgs/main";
-      flake = false;  # will patch it
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, android-nixpkgs-src }:
+  outputs = { self, nixpkgs, flake-utils, android-nixpkgs }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -21,23 +20,7 @@
           };
         };
 
-        # Patch android-nixpkgs to fix hostPlatform deprecation
-        patchedAndroidNixpkgsSrc = pkgs.runCommand "android-nixpkgs-patched" {} ''
-          cp -r ${android-nixpkgs-src} $out
-          chmod -R +w $out
-          
-          # Fix the hostPlatform reference in default.nix (line 10)
-          substituteInPlace $out/default.nix \
-            --replace "lib.meta.availableOn hostPlatform pkg" \
-                      "lib.meta.availableOn pkgs.stdenv.hostPlatform pkg"
-        '';
-
-        # Import the patched android-nixpkgs
-        android-nixpkgs = import patchedAndroidNixpkgsSrc {
-          inherit pkgs system;
-        };
-
-        androidEnv = android-nixpkgs.sdk (sdkPkgs: with sdkPkgs; [
+        androidEnv = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs; [
           cmdline-tools-latest
           build-tools-36-0-0
           platform-tools
@@ -50,9 +33,9 @@
           # Override the emulator to include the missing Qt/X11 dependencies
           buildInputs = (androidEnv.buildInputs or []) ++ (with pkgs; [
             xcb-util-cursor
-            xorg.libXcursor
-            xorg.libX11
-            xorg.libxcb
+            libXcursor
+            libX11
+            libxcb
             qt6.qtbase
             qt6.qtsvg
           ]);
@@ -66,7 +49,7 @@
           echo "🔐 Granting local X access with xhost for DISPLAY=$DISPLAY..."
           
           # CRITICAL: Define the explicit path to the Nix-built xhost
-          NIX_XHOST="${pkgs.xorg.xhost}/bin/xhost"
+          NIX_XHOST="${pkgs.xhost}/bin/xhost"
           
           if [ -x "$NIX_XHOST" ] && [ -n "$DISPLAY" ]; then
             # *** USE NIX-PROVIDED XHOST DIRECTLY ***
@@ -286,18 +269,18 @@
             qt6.qtsvg
             qt6.qtwayland
             qt6.qt5compat
-            xorg.libX11
-            xorg.libXext
-            xorg.libXfixes
-            xorg.libXi
-            xorg.libXrandr
-            xorg.libXrender
-            xorg.libxcb
-            xorg.xcbutil
-            xorg.xcbutilwm
-            xorg.xcbutilimage
-            xorg.xcbutilkeysyms
-            xorg.xcbutilrenderutil
+            libX11
+            libXext
+            libXfixes
+            libXi
+            libXrandr
+            libXrender
+            libxcb
+            xcbutil
+            xcbutilwm
+            xcbutilimage
+            xcbutilkeysyms
+            xcbutilrenderutil
             libxkbcommon
 
             # Graphics and font rendering
@@ -332,11 +315,11 @@
 
             # Critical X11 and cursor dependencies for Qt xcb platform
             xcb-util-cursor
-            xorg.libXcursor
-            xorg.setxkbmap
-            xorg.xauth
-            xorg.xhost
-            xorg.xset
+            libXcursor
+            setxkbmap
+            xauth
+            xhost
+            xset
           ];
 
         multiPkgs = pkgs: with pkgs; [
@@ -368,18 +351,18 @@
             pkgs.qt6.qtsvg
             pkgs.qt6.qtwayland
             pkgs.qt6.qt5compat
-            pkgs.xorg.libX11
-            pkgs.xorg.libXext
-            pkgs.xorg.libXfixes
-            pkgs.xorg.libXi
-            pkgs.xorg.libXrandr
-            pkgs.xorg.libXrender
-            pkgs.xorg.libxcb
-            pkgs.xorg.xcbutil
-            pkgs.xorg.xcbutilwm
-            pkgs.xorg.xcbutilimage
-            pkgs.xorg.xcbutilkeysyms
-            pkgs.xorg.xcbutilrenderutil
+            pkgs.libX11
+            pkgs.libXext
+            pkgs.libXfixes
+            pkgs.libXi
+            pkgs.libXrandr
+            pkgs.libXrender
+            pkgs.libxcb
+            pkgs.xcbutil
+            pkgs.xcbutilwm
+            pkgs.xcbutilimage
+            pkgs.xcbutilkeysyms
+            pkgs.xcbutilrenderutil
             pkgs.libxkbcommon
 
             # Graphics and font rendering
@@ -413,11 +396,11 @@
 
             # Critical X11 and cursor dependencies for Qt xcb platform
             pkgs.xcb-util-cursor
-            pkgs.xorg.libXcursor
-            pkgs.xorg.setxkbmap
-            pkgs.xorg.xauth
-            pkgs.xorg.xhost
-            pkgs.xorg.xset
+            pkgs.libXcursor
+            pkgs.setxkbmap
+            pkgs.xauth
+            pkgs.xhost
+            pkgs.xset
           ]}"
 
           export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
