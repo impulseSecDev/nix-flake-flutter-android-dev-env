@@ -25,9 +25,7 @@ Check the architecture: Ensure that the system = "x86_64-linux" line is correct 
 Force Environment Rebuld: remove ".flutter_env_ready" and the .android folder. After performing nix develop, the environment should be re-established.
 
 # Planned Future Improvements
-* Plans to reintroduce full version pinning for gradle , kotlin, ndk, sdk agp etc.
-* I'll be working on updating this flake this weekend - (6-20).
-     
+* Plans to reintroduce full version pinning for gradle , kotlin, ndk, sdk agp etc.     
 
 # License 
 
