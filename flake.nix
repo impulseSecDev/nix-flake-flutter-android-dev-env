@@ -6,6 +6,7 @@
     flake-utils.url = "github:numtide/flake-utils";
     android-nixpkgs = {
       url = "github:tadfisher/android-nixpkgs/main";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -47,12 +48,11 @@
           echo "Launching emulator ..."
 
           echo "🔐 Granting local X access with xhost for DISPLAY=$DISPLAY..."
-          
-          # CRITICAL: Define the explicit path to the Nix-built xhost
+
+          # Explicit path to the Nix-built xhost
           NIX_XHOST="${pkgs.xhost}/bin/xhost"
-          
+
           if [ -x "$NIX_XHOST" ] && [ -n "$DISPLAY" ]; then
-            # *** USE NIX-PROVIDED XHOST DIRECTLY ***
             "$NIX_XHOST" +local: > /dev/null
             if [ $? -eq 0 ]; then
               XHOST_CLEANUP=true
@@ -65,21 +65,15 @@
             echo "⚠️ Warning: Nix-xhost binary not found at $NIX_XHOST or DISPLAY not set. Fix skipped."
             XHOST_CLEANUP=false
           fi
-          
+
           # ---------------------------------------------
-          # FHS LIBRARY PREPENDING 
-          # Solves: Qt XCB plugin crash during -gpu host initialization.
-          # Ensures core libraries are found via FHS symlinks.
+          # Library path / SDK environment
+          # The FHS env already provides libs in /usr/lib.
           # ---------------------------------------------
-          # Use the FHS_LIB path provided by your shell's environment
-          if [ -n "$FHS_LIB" ]; then
-            export LD_LIBRARY_PATH="$FHS_LIB/usr/lib:$LD_LIBRARY_PATH"
-            export ANDROID_HOME="$PWD/.android/sdk"
-            export ANDROID_SDK_ROOT="$ANDROID_HOME"
-            export PATH="$ANDROID_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
-          else
-            echo "❌ Error: FHS_LIB is not set. Library path fix will not work correctly."
-          fi
+          export LD_LIBRARY_PATH="/usr/lib:$LD_LIBRARY_PATH"
+          export ANDROID_HOME="$PWD/.android/sdk"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
 
           # ----------------------------
           # Detect display server
@@ -88,9 +82,9 @@
             echo "🌿 Wayland detected: $WAYLAND_DISPLAY"
             USE_WAYLAND=true
             if [ -z "$DISPLAY" ]; then
-              export DISPLAY=:0 
+              export DISPLAY=:0
             fi
-            export QT_QPA_PLATFORM=xcb #Force XWayland 
+            export QT_QPA_PLATFORM=xcb # Force XWayland
           else
             echo "🖥️  X11 detected: ${DISPLAY:-:0}"
             USE_WAYLAND=false
@@ -113,31 +107,27 @@
           export QT_IM_MODULE=compose
           export XMODIFIERS=@im=none
           export GTK_IM_MODULE=gtk-im-context-simple
-          
+
           # Enhanced input device configuration
           export QT_LOGGING_RULES="qt.qpa.input=true;qt.qpa.input.events=true"
           export QT_QPA_GENERIC_PLUGINS=""
           # Allow Qt to use system input instead of forcing evdev
           export QT_QPA_ENABLE_TERMINAL_KEYBOARD=1
-          
+
           # X11 input settings
           export SDL_VIDEODRIVER=x11
           export XKB_DEFAULT_LAYOUT=us
-          
+
           # ----------------------------
           # Graphics / OpenGL driver
           # ----------------------------
-          LD_PATH_BASE="$FHS_LIB/usr/lib"
-
           if [ -d "/run/opengl-driver" ]; then
               echo "✅ NVIDIA/OpenGL driver detected"
-              LD_PATH_BASE="$FHS_LIB/usr/lib"
-              export LD_LIBRARY_PATH="/run/opengl-driver/lib:$FHS_LIB/usr/lib:$LD_LIBRARY_PATH"
+              export LD_LIBRARY_PATH="/run/opengl-driver/lib:/usr/lib:$LD_LIBRARY_PATH"
               export LIBGL_DRIVERS_PATH="/run/opengl-driver/lib/dri"
               export MESA_LOADER_DRIVER_OVERRIDE=""
           else
               echo "⚠️ NVIDIA driver not found, using Mesa fallback"
-              LD_PATH_BASE="$FHS_LIB/usr/lib"
               export LD_LIBRARY_PATH="${pkgs.mesa}/lib:${pkgs.libdrm}/lib:${pkgs.vulkan-loader}/lib:$LD_LIBRARY_PATH"
               export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
               export MESA_LOADER_DRIVER_OVERRIDE=i965
@@ -145,35 +135,34 @@
 
           if [ -d "/run/opengl-driver" ]; then
               echo "⚠️ Forcing Vulkan/Mesa device selection for NVIDIA"
-              # This environment variable helps the Vulkan loader find the correct driver JSON file.
+              # Helps the Vulkan loader find the correct driver JSON file.
               export MESA_VULKAN_DEVICE_SELECT="${pkgs.vulkan-loader}/etc/vulkan/icd.d/nvidia_icd.json"
           fi
 
-          # This is a fix to force the emulator to use the host's GL/Vulkan stack
+          # Force the emulator to use the host's GL/Vulkan stack
           export QEMU_GL_ENABLE=1
           export QEMU_VULKAN_ENABLE=1
-          export LD_PRELOAD="${pkgs.libglvnd}/lib/libGL.so.1" # Only preload libGL.so.1          # ---------------------------------------------
+
+          # ---------------------------------------------
           # Physical Keyboard & side panel Functionality
           # ---------------------------------------------
-          # Check home directory AVD
           HOME_EMULATOR_CONFIG_DIR="$HOME/.android/avd/android_emulator.avd"
           if [ -d "$HOME_EMULATOR_CONFIG_DIR" ]; then
             echo "📝 Found AVD in home directory: $HOME_EMULATOR_CONFIG_DIR"
-            
-            # Update home directory config.ini
+
             if [ -f "$HOME_EMULATOR_CONFIG_DIR/config.ini" ]; then
               if grep -q "^hw\.keyboard\s*=" "$HOME_EMULATOR_CONFIG_DIR/config.ini"; then
                 sed -i 's/^hw\.keyboard\s*=.*/hw.keyboard=yes/' "$HOME_EMULATOR_CONFIG_DIR/config.ini"
               else
                 echo "hw.keyboard=yes" >> "$HOME_EMULATOR_CONFIG_DIR/config.ini"
               fi
-              
+
               if grep -q "^hw\.mainKeys\s*=" "$HOME_EMULATOR_CONFIG_DIR/config.ini"; then
                 sed -i 's/^hw\.mainKeys\s*=.*/hw.mainKeys=yes/' "$HOME_EMULATOR_CONFIG_DIR/config.ini"
               else
                 echo "hw.mainKeys=yes" >> "$HOME_EMULATOR_CONFIG_DIR/config.ini"
               fi
-              
+
               if grep -q "^hw\.dPad\s*=" "$HOME_EMULATOR_CONFIG_DIR/config.ini"; then
                 sed -i 's/^hw\.dPad\s*=.*/hw.dPad=yes/' "$HOME_EMULATOR_CONFIG_DIR/config.ini"
               else
@@ -186,9 +175,8 @@
           # ---------------------------------------------
           # Run the emulator with Cleanup Trap
           # ---------------------------------------------
-          # Set a trap to ensure xhost is cleaned up even if the script is aborted
           if $XHOST_CLEANUP; then
-            trap "xhost -local: > /dev/null; echo '✅ X access revoked.'" EXIT
+            trap "$NIX_XHOST -local: > /dev/null; echo '✅ X access revoked.'" EXIT
           fi
 
           exec emulator -avd android_emulator \
@@ -198,7 +186,7 @@
             -no-snapshot-save \
             -port 5554 \
             -grpc 8554 \
-            -qemu -enable-kvm \
+            -qemu -enable-kvm
         '';
 
         # Patched Flutter derivation.
@@ -225,7 +213,7 @@
         });
 
         # >>> PIN FOR COMPATIBILITY >>>
-        minSdkVersion = "24"; 
+        minSdkVersion = "24";
         kotlinVersion = "2.0.21";
         agpVersion = "9.0.0"; # Android Gradle Plugin
         ndkVersion = "27.0.12077973";
@@ -268,7 +256,6 @@
             qt6.qtbase
             qt6.qtsvg
             qt6.qtwayland
-            qt6.qt5compat
             libX11
             libXext
             libXfixes
@@ -330,14 +317,14 @@
 
         profile = ''
           echo "FHS shell is active. Setting up Flutter+Android environment..."
-          #  Critical nix-ld environment variables for dynamic linking compatibility
-          export PATH="$FHS_LIB/usr/bin:$PATH"
+
+          # Library path for the emulator's Qt/X11/GL dependencies.
+          # glibc and stdenv.cc.cc.lib are intentionally NOT listed: forcing a
+          # different libc.so.6 in front of the SDK binaries' own loader causes
+          # "stack smashing detected" aborts in adb/emulator.
           export NIX_LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
-            # Core runtime libraries
-            pkgs.glibc
             pkgs.zlib
             pkgs.ncurses5
-            pkgs.stdenv.cc.cc.lib
 
             # Qt 5/6 and X11 GUI dependencies
             pkgs.libsForQt5.qt5.qtbase
@@ -350,7 +337,6 @@
             pkgs.qt6.qtbase
             pkgs.qt6.qtsvg
             pkgs.qt6.qtwayland
-            pkgs.qt6.qt5compat
             pkgs.libX11
             pkgs.libXext
             pkgs.libXfixes
@@ -404,7 +390,7 @@
           ]}"
 
           export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH"
-          echo "✅ FHS /usr/lib graphics mock initialized at $FHS_LIB/usr/lib"
+          echo "✅ FHS /usr/lib graphics mock initialized at /usr/lib"
 
           # Fast path for subsequent shell entries
           if [ -f "$PWD/.flutter_env_ready" ] && [ -d "$PWD/.android/sdk" ]; then
@@ -413,10 +399,9 @@
             export JAVA_HOME="${pkgs.jdk17}"
             export PATH="${pkgs.cmake}/bin:${pkgs.ninja}/bin:$PATH"
             # Prepend to LD_LIBRARY_PATH so emulator sees these first
-            export LD_LIBRARY_PATH="$FHS_LIB/usr/lib:$LD_LIBRARY_PATH"
+            export LD_LIBRARY_PATH="/usr/lib:$LD_LIBRARY_PATH"
             export ANDROID_EMULATOR_HOME="$PWD/.android"
 
-            echo "✅ FHS graphics symlinks initialized at $FHS_LIB"
             echo "⚡ Fast shell entry - Flutter environment ready!"
             echo "👉 To launch the emulator, run:"
             echo "    run-emulator"
@@ -505,7 +490,7 @@
               # Create gradle.properties if it doesn't exist
               touch android/gradle.properties
 
-              # Use sed to remove existing properties to avoid duplicates  
+              # Use sed to remove existing properties to avoid duplicates
               sed -i '/^android\.cmake\.path=/d' android/gradle.properties
               sed -i '/^android\.ninja\.path=/d' android/gradle.properties
               sed -i '/^android\.cmake\.version=/d' android/gradle.properties
@@ -529,7 +514,7 @@
               sed -i -e "s/minSdk = [0-9a-zA-Z._]*/minSdk = ${minSdkVersion}/g" android/app/build.gradle.kts
             fi
 
-            #Support for traditional Groovy build files 
+            # Support for traditional Groovy build files
             if [ -f "android/build.gradle" ]; then
               echo "⚙️ Pinning Android build tool versions in Groovy DSL..."
               sed -i -e "s/com.android.application.*version.*'[0-9.]*'/com.android.application' version '${agpVersion}'/g" android/build.gradle
@@ -537,7 +522,7 @@
               sed -i -e "s/minSdkVersion [0-9]*/minSdkVersion ${minSdkVersion}/g" android/app/build.gradle
             fi
 
-            #Pin NDK version in Gradle build files
+            # Pin NDK version in Gradle build files
             if [ -f "android/app/build.gradle.kts" ]; then
               sed -i '/ndkVersion\s*=/d' android/app/build.gradle.kts
               if grep -q "android\s*{" android/app/build.gradle.kts; then
@@ -563,25 +548,25 @@
             HOME_AVD_CONFIG="$HOME/.android/avd/android_emulator.avd/config.ini"
             if [ -f "$HOME_AVD_CONFIG" ]; then
               echo "Configuring home directory AVD..."
-              
+
               if grep -q "^hw\.keyboard\s*=" "$HOME_AVD_CONFIG"; then
                 sed -i 's/^hw\.keyboard\s*=.*/hw.keyboard=yes/' "$HOME_AVD_CONFIG"
               else
                 echo "hw.keyboard=yes" >> "$HOME_AVD_CONFIG"
               fi
-              
+
               if grep -q "^hw\.mainKeys\s*=" "$HOME_AVD_CONFIG"; then
                 sed -i 's/^hw\.mainKeys\s*=.*/hw.mainKeys=yes/' "$HOME_AVD_CONFIG"
               else
                 echo "hw.mainKeys=yes" >> "$HOME_AVD_CONFIG"
               fi
-              
+
               if grep -q "^hw\.dPad\s*=" "$HOME_AVD_CONFIG"; then
                 sed -i 's/^hw\.dPad\s*=.*/hw.dPad=yes/' "$HOME_AVD_CONFIG"
               else
                 echo "hw.dPad=yes" >> "$HOME_AVD_CONFIG"
               fi
-              
+
               echo "✅ Home directory AVD configured for full emulator functionality"
             fi
 
@@ -612,5 +597,3 @@
       }).env;
     });
 }
-
-
